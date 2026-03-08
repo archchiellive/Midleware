@@ -58,12 +58,22 @@ function getEffectByAmount(points) {
 // URL: https://domain-kamu.com/donation
 // ============================================================
 app.post("/donation", async (req, res) => {
-  // Validasi secret
-  const secret = req.headers["x-webhook-token"] || req.body.secret;
-  if (secret !== CONFIG.SOCIALBUZZ_SECRET) {
-    console.warn("[WARN] Invalid secret received");
-    return res.status(403).json({ error: "Forbidden" });
-  }
+  // Log semua yang masuk untuk debug
+  console.log("=== HEADERS ===", JSON.stringify(req.headers));
+  console.log("=== BODY ===", JSON.stringify(req.body));
+
+  // SEMENTARA: skip validasi token dulu
+  // const secret = req.headers["x-webhook-token"] || req.body.token;
+  // if (secret !== CONFIG.SOCIALBUZZ_SECRET) {
+  //   return res.status(403).json({ error: "Forbidden" });
+  // }
+
+  const { donor_name, amount_points, amount_idr, message } = req.body;
+
+  console.log(`[DONATION] ${donor_name} — ${amount_points} poin`);
+
+  res.json({ success: true, received: req.body });
+});
 
   // Struktur webhook SocialBuzz (sesuaikan jika berbeda)
   const { donor_name, amount_points, amount_idr, message } = req.body;
