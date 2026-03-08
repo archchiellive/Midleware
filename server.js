@@ -104,7 +104,7 @@ app.post("/donation", async (req, res) => {
   }
 });
 
-app.listen(CONFIG.PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Server berjalan di port ${CONFIG.PORT}`);
   console.log(`   Universe ID : ${CONFIG.ROBLOX_UNIVERSE_ID || "BELUM DIISI"}`);
   console.log(`   API Key     : ${CONFIG.ROBLOX_API_KEY ? "✓ ada" : "BELUM DIISI"}`);
