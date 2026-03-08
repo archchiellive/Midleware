@@ -59,7 +59,7 @@ function getEffectByAmount(points) {
 // ============================================================
 app.post("/donation", async (req, res) => {
   // Validasi secret
-  const secret = req.headers["x-socialbuzz-secret"] || req.body.secret;
+  const secret = req.headers["x-webhook-token"] || req.body.secret;
   if (secret !== CONFIG.SOCIALBUZZ_SECRET) {
     console.warn("[WARN] Invalid secret received");
     return res.status(403).json({ error: "Forbidden" });
