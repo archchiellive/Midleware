@@ -44,7 +44,7 @@ app.post("/donation", async (req, res) => {
   console.log("[HEADERS]", JSON.stringify(req.headers));
 
   // Validasi token
-  const token = req.headers["x-webhook-token"] || req.headers["authorization"] || req.body.token || "";
+  const token = req.headers["sb-webhook-token"] || req.headers["x-webhook-token"] || req.headers["authorization"] || req.body.token || "";
   if (SB_SECRET && token !== SB_SECRET) {
     console.warn("[WARN] Token salah:", token);
     return res.status(403).json({ error: "Forbidden" });
