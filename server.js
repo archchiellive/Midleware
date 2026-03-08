@@ -1,102 +1,112 @@
-// ============================================================
-// SocialBuzz → Roblox Donation Middleware
-// Deploy ke: Railway / Render / Glitch (gratis)
-// ============================================================
-
 const express = require("express");
 const app = express();
+
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// === KONFIGURASI — isi sesuai milikmu ===
+// === KONFIGURASI ===
 const CONFIG = {
-  ROBLOX_UNIVERSE_ID: "UNIVERSE_ID_KAMU",   // Ganti dengan Universe ID game kamu
-  ROBLOX_API_KEY:     "ROBLOX_API_KEY_KAMU", // Dari Open Cloud di creator.roblox.com
-  SOCIALBUZZ_SECRET:  "SECRET_KAMU",         // Buat sendiri, samakan dengan di SocialBuzz webhook
-  PORT: process.env.PORT || 3000,
+  ROBLOX_UNIVERSE_ID: process.env.ROBLOX_UNIVERSE_ID || "",
+  ROBLOX_API_KEY:     process.env.ROBLOX_API_KEY || "",
+  SOCIALBUZZ_SECRET:  process.env.SOCIALBUZZ_SECRET || "",
+  PORT:               process.env.PORT || 3000,
 };
-
-// Kirim pesan ke Roblox via MessagingService (Open Cloud)
-async function notifyRoblox(donorName, amountPoints, amountIDR, message) {
-  const payload = {
-    donorName,
-    amountPoints,
-    amountIDR,
-    message: message || "",
-    effectType: getEffectByAmount(amountPoints),
-  };
-
-  const response = await fetch(
-    `https://apis.roblox.com/messaging-service/v1/universes/${CONFIG.ROBLOX_UNIVERSE_ID}/topics/SocialBuzzDonation`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": CONFIG.ROBLOX_API_KEY,
-      },
-      body: JSON.stringify({ message: JSON.stringify(payload) }),
-    }
-  );
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Roblox API error: ${response.status} — ${err}`);
-  }
-
-  return payload;
-}
 
 // Tentukan tipe efek berdasarkan jumlah poin
 function getEffectByAmount(points) {
-  if (points >= 10000) return "rainbow";
-  if (points >= 5000)  return "gold";
-  if (points >= 1000)  return "stars";
+  const p = Number(points) || 0;
+  if (p >= 10000) return "rainbow";
+  if (p >= 5000)  return "gold";
+  if (p >= 1000)  return "stars";
   return "socialbuzz";
 }
 
-// ============================================================
-// ENDPOINT — SocialBuzz mengirim webhook ke sini
-// URL: https://domain-kamu.com/donation
-// ============================================================
-app.post("/donation", async (req, res) => {
-  // Log semua yang masuk untuk debug
-  console.log("=== HEADERS ===", JSON.stringify(req.headers));
-  console.log("=== BODY ===", JSON.stringify(req.body));
-
-  // SEMENTARA: skip validasi token dulu
-  // const secret = req.headers["x-webhook-token"] || req.body.token;
-  // if (secret !== CONFIG.SOCIALBUZZ_SECRET) {
-  //   return res.status(403).json({ error: "Forbidden" });
-  // }
-
-  const { donor_name, amount_points, amount_idr, message } = req.body;
-
-  console.log(`[DONATION] ${donor_name} — ${amount_points} poin`);
-
-  res.json({ success: true, received: req.body });
-});
-
-  // Struktur webhook SocialBuzz (sesuaikan jika berbeda)
-  const { donor_name, amount_points, amount_idr, message } = req.body;
-
-  if (!donor_name || amount_points === undefined) {
-    return res.status(400).json({ error: "Missing required fields" });
+// Kirim notifikasi ke Roblox via Open Cloud MessagingService
+async function notifyRoblox(donorName, amountPoints, amountIDR, message, effectType) {
+  if (!CONFIG.ROBLOX_UNIVERSE_ID || !CONFIG.ROBLOX_API_KEY) {
+    console.warn("[WARN] ROBLOX_UNIVERSE_ID atau ROBLOX_API_KEY belum diisi di Variables!");
+    return;
   }
 
-  console.log(`[DONATION] ${donor_name} — ${amount_points} poin (Rp${amount_idr})`);
+  const payload = {
+    donorName:    String(donorName || "Anonim"),
+    amountPoints: Number(amountPoints) || 0,
+    amountIDR:    Number(amountIDR) || 0,
+    message:      String(message || ""),
+    effectType:   String(effectType || "socialbuzz"),
+  };
 
-  try {
-    const payload = await notifyRoblox(donor_name, amount_points, amount_idr || 0, message);
-    console.log("[OK] Notified Roblox:", payload);
-    res.json({ success: true, payload });
-  } catch (err) {
-    console.error("[ERROR]", err.message);
-    res.status(500).json({ error: err.message });
+  const url = `https://apis.roblox.com/messaging-service/v1/universes/${CONFIG.ROBLOX_UNIVERSE_ID}/topics/SocialBuzzDonation`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": CONFIG.ROBLOX_API_KEY,
+    },
+    body: JSON.stringify({ message: JSON.stringify(payload) }),
+  });
+
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Roblox API ${response.status}: ${responseText}`);
   }
-});
+
+  console.log("[OK] Roblox notified:", JSON.stringify(payload));
+  return payload;
+}
 
 // Health check
-app.get("/", (req, res) => res.json({ status: "SocialBuzz Middleware running ✅" }));
+app.get("/", (req, res) => {
+  res.json({
+    status: "SocialBuzz Middleware running ✅",
+    universe: CONFIG.ROBLOX_UNIVERSE_ID || "BELUM DIISI",
+    hasApiKey: !!CONFIG.ROBLOX_API_KEY,
+    hasSecret: !!CONFIG.SOCIALBUZZ_SECRET,
+  });
+});
+
+// Endpoint utama — SocialBuzz kirim webhook ke sini
+app.post("/donation", async (req, res) => {
+  console.log("[REQUEST] Headers:", JSON.stringify(req.headers));
+  console.log("[REQUEST] Body:", JSON.stringify(req.body));
+
+  // Cek token dari berbagai kemungkinan field
+  const incomingToken =
+    req.headers["x-webhook-token"] ||
+    req.headers["authorization"] ||
+    req.headers["x-socialbuzz-secret"] ||
+    req.body.token ||
+    req.body.webhook_token ||
+    "";
+
+  if (CONFIG.SOCIALBUZZ_SECRET && incomingToken !== CONFIG.SOCIALBUZZ_SECRET) {
+    console.warn("[WARN] Token tidak cocok. Incoming:", incomingToken);
+    return res.status(403).json({ error: "Forbidden: token tidak cocok" });
+  }
+
+  // Ambil data — support berbagai kemungkinan nama field SocialBuzz
+  const donorName    = req.body.donor_name    || req.body.buyer_name || req.body.username || req.body.name || "Anonim";
+  const amountPoints = req.body.amount_points || req.body.points     || req.body.amount   || 0;
+  const amountIDR    = req.body.amount_idr    || req.body.price      || req.body.idr      || 0;
+  const message      = req.body.message       || req.body.note       || req.body.msg      || "";
+  const effectType   = getEffectByAmount(amountPoints);
+
+  console.log(`[DONATION] ${donorName} | ${amountPoints} poin | Rp${amountIDR} | Efek: ${effectType}`);
+
+  try {
+    await notifyRoblox(donorName, amountPoints, amountIDR, message, effectType);
+    return res.json({ success: true, donor: donorName, points: amountPoints, idr: amountIDR });
+  } catch (err) {
+    console.error("[ERROR] Gagal notify Roblox:", err.message);
+    return res.json({ success: false, error: err.message });
+  }
+});
 
 app.listen(CONFIG.PORT, () => {
-  console.log(`Server berjalan di port ${CONFIG.PORT}`);
+  console.log(`✅ Server berjalan di port ${CONFIG.PORT}`);
+  console.log(`   Universe ID : ${CONFIG.ROBLOX_UNIVERSE_ID || "BELUM DIISI"}`);
+  console.log(`   API Key     : ${CONFIG.ROBLOX_API_KEY ? "✓ ada" : "BELUM DIISI"}`);
+  console.log(`   SB Secret   : ${CONFIG.SOCIALBUZZ_SECRET ? "✓ ada" : "BELUM DIISI"}`);
 });
